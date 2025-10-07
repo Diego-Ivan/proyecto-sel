@@ -780,4 +780,22 @@ mod tests {
 
         evaluator.evaluate_expression(&equation.right).unwrap();
     }
+
+    #[test]
+    fn test_group_implicit_multiplication() {
+        let equation = equation_from_text("x(1 + 18) = (3 + 6)(2 + 9x)");
+        let evaluator = super::Evaluator();
+
+        let left = evaluator.evaluate_expression(&equation.left).unwrap();
+        let right = evaluator.evaluate_expression(&equation.right).unwrap();
+
+        assert_eq!(left, Value::new_monomial(19.0, String::from("x")));
+        assert_eq!(
+            right,
+            Value::Sum(vec![
+                Value::new_constant(18.0),
+                Value::new_monomial(81.0, String::from("x"))
+            ])
+        );
+    }
 }

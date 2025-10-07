@@ -137,20 +137,36 @@ impl Lexer {
             None => return Ok(primary),
         };
 
-        if let TokenType::Identifier(varname) = &next.token_type {
-            self.advance();
-            let right = Expression {
-                expression_type: ExpressionType::Variable(varname.clone()),
-                token: next.clone(),
-            };
-            primary = Expression {
-                expression_type: ExpressionType::Binary {
-                    left: Box::new(primary),
-                    right: Box::new(right),
-                    operator: Token::new(TokenType::Star, String::from("*"), next.column),
-                },
-                token: next.clone(),
+        match &next.token_type {
+            TokenType::Identifier(varname) => {
+                self.advance();
+                let right = Expression {
+                    expression_type: ExpressionType::Variable(varname.clone()),
+                    token: next.clone(),
+                };
+                primary = Expression {
+                    expression_type: ExpressionType::Binary {
+                        left: Box::new(primary),
+                        right: Box::new(right),
+                        operator: Token::new(TokenType::Star, String::from("*"), next.column),
+                    },
+                    token: next.clone(),
+                }
             }
+            TokenType::LeftParen => {
+                self.advance();
+                let group = self.parse_group(next.clone())?;
+
+                primary = Expression {
+                    expression_type: ExpressionType::Binary {
+                        left: Box::new(primary),
+                        operator: Token::new(TokenType::Star, String::from("*"), next.column),
+                        right: Box::new(group),
+                    },
+                    token: next.clone(),
+                }
+            }
+            _ => {}
         }
 
         Ok(primary)
@@ -172,14 +188,7 @@ impl Lexer {
             }
             TokenType::LeftParen => {
                 self.advance();
-                let expression = self.expression()?;
-
-                expect_token!(self, TokenType::RightParen, RightParen);
-
-                Ok(Expression {
-                    expression_type: ExpressionType::Grouping(Box::new(expression)),
-                    token,
-                })
+                self.parse_group(token)
             }
             TokenType::Identifier(varname) => {
                 self.advance();
@@ -192,6 +201,16 @@ impl Lexer {
                 found: other.clone(),
             }),
         }
+    }
+
+    fn parse_group(&mut self, token: Token) -> LexerResult<Expression> {
+        let group = self.expression()?;
+        expect_token!(self, TokenType::RightParen, RightParen);
+
+        Ok(Expression {
+            expression_type: ExpressionType::Grouping(Box::new(group)),
+            token: token.clone(),
+        })
     }
 
     fn peek(&self) -> Option<&Token> {
@@ -350,10 +369,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_invalid_implicit_multiplication_left() {
-        let tokens = text_into_tokens("x(1 + y) = 2x");
+    fn test_group_implicit_multiplication() {
+        let tokens = text_into_tokens("x(1 + y) = (3 + 6)(2 + x)");
         let mut lexer = Lexer::new(tokens);
-        lexer.equation().unwrap();
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(* x (group (+ 1 y)))");
+        assert_eq!(right, "(* (group (+ 3 6)) (group (+ 2 x)))");
     }
 }
