@@ -138,12 +138,8 @@ impl Lexer {
         };
 
         match &next.token_type {
-            TokenType::Identifier(varname) => {
-                self.advance();
-                let right = Expression {
-                    expression_type: ExpressionType::Variable(varname.clone()),
-                    token: next.clone(),
-                };
+            TokenType::Identifier(_) => {
+                let right = self.monomial()?;
                 primary = Expression {
                     expression_type: ExpressionType::Binary {
                         left: Box::new(primary),
@@ -154,14 +150,12 @@ impl Lexer {
                 }
             }
             TokenType::LeftParen => {
-                self.advance();
-                let group = self.parse_group(next.clone())?;
-
+                let right = self.monomial()?;
                 primary = Expression {
                     expression_type: ExpressionType::Binary {
                         left: Box::new(primary),
                         operator: Token::new(TokenType::Star, String::from("*"), next.column),
-                        right: Box::new(group),
+                        right: Box::new(right),
                     },
                     token: next.clone(),
                 }
@@ -238,7 +232,7 @@ impl Lexer {
 
 #[cfg(test)]
 mod tests {
-    use crate::expression::{Expression, ExpressionType};
+    use crate::expression::ExpressionType;
     use crate::lexer::Lexer;
     use crate::tokenizer::{Token, Tokenizer};
     use std::io::{BufReader, Cursor};
@@ -361,11 +355,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_invalid_implicit_multiplication_right() {
         let tokens = text_into_tokens("x = 2x(1 + y)");
         let mut lexer = Lexer::new(tokens);
-        lexer.equation().unwrap();
+        let right = lexer.equation().unwrap().right;
+
+        assert_eq!(format!("{right}"), "(* 2 (* x (group (+ 1 y))))");
     }
 
     #[test]
@@ -379,5 +374,40 @@ mod tests {
 
         assert_eq!(left, "(* x (group (+ 1 y)))");
         assert_eq!(right, "(* (group (+ 3 6)) (group (+ 2 x)))");
+    }
+
+    #[test]
+    fn test_triple_group_implicit_multiplication() {
+        let tokens = text_into_tokens("(1 + 6) (x + 9) (y - 2) = (1 + 6)*(x + 9)*(y - 2)");
+        let mut lexer = Lexer::new(tokens);
+
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(
+            left,
+            "(* (group (+ 1 6)) (* (group (+ x 9)) (group (- y 2))))"
+        );
+
+        assert_eq!(
+            right,
+            "(* (* (group (+ 1 6)) (group (+ x 9))) (group (- y 2)))"
+        );
+    }
+
+    #[test]
+    fn test_group_times_variable_multiplication() {
+        let tokens = text_into_tokens("(1 + y)x = (-9 + x)y");
+
+        let mut lexer = Lexer::new(tokens);
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(* (group (+ 1 y)) x)");
+        assert_eq!(right, "(* (group (+ (- 9) x)) y)")
     }
 }

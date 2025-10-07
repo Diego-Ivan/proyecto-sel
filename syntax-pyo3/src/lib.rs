@@ -40,7 +40,7 @@ mod sel_simplifier {
                 None => write!(f, "0"),
             }?;
 
-            for (variable, coeff) in self.terms.iter() {
+            for (variable, coeff) in terms {
                 if coeff.abs() < CMP_EPSILON {
                     continue;
                 }
