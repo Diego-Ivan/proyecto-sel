@@ -49,6 +49,7 @@ impl<R: BufRead> Tokenizer<R> {
             b'*' => push_token!(Star),
             b'=' => push_token!(Equal),
             b'/' => push_token!(Slash),
+            b'^' => push_token!(Hat),
             b'0'..=b'9' => {
                 lexeme.push(current);
                 self.consume_number(lexeme)
@@ -340,5 +341,34 @@ mod tests {
                 Token::new(TokenType::Number(3.0), String::from("3"), 5),
             ]
         );
+    }
+
+    #[test]
+    fn test_exponent() {
+        let source = "3^2 = 9^(y + 2)";
+
+        let scanner = super::Tokenizer::new(Cursor::new(source));
+        let result: Vec<Token> = scanner.map(|t| t.unwrap()).collect();
+
+        assert_eq!(
+            result,
+            [
+                Token::new(TokenType::Number(3.0), String::from("3"), 1),
+                Token::new(TokenType::Hat, String::from("^"), 2),
+                Token::new(TokenType::Number(2.0), String::from("2"), 3),
+                Token::new(TokenType::Equal, String::from("="), 5),
+                Token::new(TokenType::Number(9.0), String::from("9"), 7),
+                Token::new(TokenType::Hat, String::from("^"), 8),
+                Token::new(TokenType::LeftParen, String::from("("), 9),
+                Token::new(
+                    TokenType::Identifier(String::from("y")),
+                    String::from("y"),
+                    10
+                ),
+                Token::new(TokenType::Plus, String::from("+"), 12),
+                Token::new(TokenType::Number(2.0), String::from("2"), 14),
+                Token::new(TokenType::RightParen, String::from(")"), 15)
+            ]
+        )
     }
 }

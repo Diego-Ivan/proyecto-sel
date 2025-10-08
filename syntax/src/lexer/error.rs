@@ -21,6 +21,9 @@ pub enum LexerError {
     ExpectedPrimary {
         found: TokenType,
     },
+    InvalidExponent {
+        found: TokenType,
+    },
 }
 
 impl Display for LexerError {
@@ -43,6 +46,10 @@ impl Display for LexerError {
                 "Expected number, identifier or left parenthesis, but found {found:?} instead"
             ),
             Self::ExpectedEof { found } => write!(f, "Expected EOF, found {found:?} instead"),
+            Self::InvalidExponent { found } => write!(
+                f,
+                "Expected identifier, number or group for exponent, but found {found:?} instead"
+            ),
         }
     }
 }

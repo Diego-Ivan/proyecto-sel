@@ -29,6 +29,7 @@ impl Evaluator {
                 TokenType::Minus => self.evaluate_subtraction(left, right),
                 TokenType::Star => self.evaluate_multiplication(left, right),
                 TokenType::Slash => self.evaluate_division(left, right),
+                TokenType::Hat => self.evaluate_exponent(left, right),
 
                 _ => Err(EvaluatorError {
                     error_type: EvaluatorErrorType::InvalidBinaryOperator,
@@ -37,6 +38,44 @@ impl Evaluator {
             },
         }
     }
+
+    fn evaluate_exponent(
+        &self,
+        left: &Expression,
+        exponent: &Expression,
+    ) -> EvaluatorResult<Value> {
+        let left_result = self.evaluate_expression(left)?;
+        let exponent_value = self.evaluate_expression(exponent)?;
+
+        match (left_result, exponent_value) {
+            (
+                Value::Monomial {
+                    coefficient: c1,
+                    variable: v1,
+                },
+                Value::Monomial {
+                    coefficient: c2,
+                    variable: v2,
+                },
+            ) => match (v1, v2) {
+                (None, None) => Ok(Value::new_constant(c1.powf(c2))),
+                (Some(_), _) => Err(EvaluatorError {
+                    error_type: EvaluatorErrorType::NonConstantBase,
+                    token: left.token.clone(),
+                }),
+                (_, Some(_)) => Err(EvaluatorError {
+                    error_type: EvaluatorErrorType::NonConstantExponent,
+                    token: exponent.token.clone(),
+                }),
+            },
+
+            _ => Err(EvaluatorError {
+                error_type: EvaluatorErrorType::NonConstantExponent,
+                token: exponent.token.clone(),
+            }),
+        }
+    }
+
     fn evaluate_addition(&self, left: &Expression, right: &Expression) -> EvaluatorResult<Value> {
         let left = self.evaluate_expression(left)?;
         let right = self.evaluate_expression(right)?;
@@ -797,5 +836,38 @@ mod tests {
                 Value::new_monomial(81.0, String::from("x"))
             ])
         );
+    }
+
+    #[test]
+    fn test_exponentiation() {
+        let equation = equation_from_text("9^2 = 9^(1/2)");
+        let evaluator = super::Evaluator();
+
+        let left = evaluator.evaluate_expression(&equation.left).unwrap();
+        let right = evaluator.evaluate_expression(&equation.right).unwrap();
+
+        assert_eq!(left, Value::new_constant(81.0));
+        assert_eq!(right, Value::new_constant(3.0));
+    }
+
+    #[test]
+    fn test_allows_exponent_to_sum_of_constants() {
+        let equation = equation_from_text("2^(1 + 3 + 1) = 3^(2 + 1)");
+        let evaluator = super::Evaluator();
+
+        let left = evaluator.evaluate_expression(&equation.left).unwrap();
+        let right = evaluator.evaluate_expression(&equation.right).unwrap();
+
+        assert_eq!(left, Value::new_constant(32.0));
+        assert_eq!(right, Value::new_constant(27.0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panics_on_variable_to_exponent() {
+        let equation = equation_from_text("x^2 = y");
+        let evaluator = super::Evaluator();
+
+        evaluator.evaluate_expression(&equation.left).unwrap();
     }
 }

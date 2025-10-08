@@ -160,6 +160,19 @@ impl Lexer {
                     token: next.clone(),
                 }
             }
+            TokenType::Hat => {
+                self.advance();
+                let exponent = self.parse_exponent()?;
+
+                primary = Expression {
+                    expression_type: ExpressionType::Binary {
+                        left: Box::new(primary),
+                        operator: next.clone(),
+                        right: Box::new(exponent),
+                    },
+                    token: next.clone(),
+                }
+            }
             _ => {}
         }
 
@@ -195,6 +208,17 @@ impl Lexer {
                 found: other.clone(),
             }),
         }
+    }
+
+    fn parse_exponent(&mut self) -> LexerResult<Expression> {
+        let next = match self.peek() {
+            Some(next) => next.clone(),
+            None => return Err(LexerError::UnexpectedEof),
+        };
+
+        self.primary().map_err(|_| LexerError::InvalidExponent {
+            found: next.token_type,
+        })
     }
 
     fn parse_group(&mut self, token: Token) -> LexerResult<Expression> {
@@ -409,5 +433,56 @@ mod tests {
 
         assert_eq!(left, "(* (group (+ 1 y)) x)");
         assert_eq!(right, "(* (group (+ (- 9) x)) y)")
+    }
+
+    #[test]
+    fn test_exponent_to_numbers() {
+        let tokens = text_into_tokens("9^16 = -12.25^2.5");
+
+        let mut lexer = Lexer::new(tokens);
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(^ 9 16)");
+        assert_eq!(right, "(- (^ 12.25 2.5))")
+    }
+
+    #[test]
+    fn test_exponent_to_identifiers() {
+        let tokens = text_into_tokens("12^x = -2.5^y");
+
+        let mut lexer = Lexer::new(tokens);
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(^ 12 x)");
+        assert_eq!(right, "(- (^ 2.5 y))")
+    }
+
+    #[test]
+    fn test_exponent_to_groupings() {
+        let tokens = text_into_tokens("x^(9 + 7 - y) = y^(7 + x)");
+
+        let mut lexer = Lexer::new(tokens);
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(^ x (group (- (+ 9 7) y)))");
+        assert_eq!(right, "(^ y (group (+ 7 x)))");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panics_on_invalid_exponent() {
+        let tokens = text_into_tokens("x^* = y");
+
+        let mut lexer = Lexer::new(tokens);
+        lexer.equation().unwrap();
     }
 }

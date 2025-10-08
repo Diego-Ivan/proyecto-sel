@@ -9,6 +9,7 @@ pub enum TokenType {
     LeftParen,
     RightParen,
     Equal,
+    Hat,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -23,7 +24,7 @@ impl Token {
         Self {
             token_type,
             lexeme,
-            column
+            column,
         }
     }
 }

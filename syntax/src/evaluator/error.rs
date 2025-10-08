@@ -1,4 +1,4 @@
-use crate::tokenizer::Token;
+use crate::tokenizer::{Token, TokenType};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -13,6 +13,8 @@ pub enum EvaluatorErrorType {
         right: Token,
     },
     InvalidBinaryOperator,
+    NonConstantExponent,
+    NonConstantBase,
 }
 
 pub type EvaluatorResult<T> = Result<T, EvaluatorError>;
@@ -26,7 +28,7 @@ pub struct EvaluatorError {
 impl Display for EvaluatorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use EvaluatorErrorType::*;
-        match self.error_type {
+        match &self.error_type {
             ZeroDivision => write!(
                 f,
                 "Division by zero is not possible. Column {}",
@@ -45,6 +47,16 @@ impl Display for EvaluatorError {
             InvalidBinaryOperator => write!(
                 f,
                 "Token: {:?} is not a valid binary operator. Column {}",
+                self.token, self.token.column
+            ),
+            NonConstantBase => write!(
+                f,
+                "The base of an exponentiation operation may only be a constant. Found {:?}, column {}",
+                self.token, self.token.column
+            ),
+            NonConstantExponent => write!(
+                f,
+                "The exponent of an exponentiation operation may only be a constant. Found {:?} in column {}",
                 self.token, self.token.column
             ),
         }
