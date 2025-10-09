@@ -2,6 +2,7 @@
 pub enum TokenType {
     Number(f64),
     Identifier(String),
+    FunctionName(String),
     Star,
     Plus,
     Slash,

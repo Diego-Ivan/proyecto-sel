@@ -50,6 +50,10 @@ impl<R: BufRead> Tokenizer<R> {
             b'=' => push_token!(Equal),
             b'/' => push_token!(Slash),
             b'^' => push_token!(Hat),
+            b'\\' => {
+                lexeme.push(current);
+                self.consume_function_name(lexeme)
+            }
             b'0'..=b'9' => {
                 lexeme.push(current);
                 self.consume_number(lexeme)
@@ -140,6 +144,25 @@ impl<R: BufRead> Tokenizer<R> {
         }
 
         self.add_token_with_column(TokenType::Number(decimal), lexeme, first_col)
+    }
+
+    fn consume_function_name(&mut self, mut lexeme: Vec<u8>) -> TokenizerResult<Token> {
+        let start = self.column;
+        let mut name = Vec::new();
+
+        while let Some(c) = self.current_byte {
+            if !c.is_ascii_alphanumeric() {
+                break;
+            }
+            self.advance();
+
+            name.push(c);
+            lexeme.push(c);
+        }
+
+        let name = self.lexeme_into_utf8(name)?;
+
+        self.add_token_with_column(TokenType::FunctionName(name), lexeme, start)
     }
 
     fn consume_identifier(&mut self, lexeme: Vec<u8>) -> TokenizerResult<Token> {
@@ -368,6 +391,42 @@ mod tests {
                 Token::new(TokenType::Plus, String::from("+"), 12),
                 Token::new(TokenType::Number(2.0), String::from("2"), 14),
                 Token::new(TokenType::RightParen, String::from(")"), 15)
+            ]
+        )
+    }
+
+    #[test]
+    fn test_parse_function_name() {
+        let source = "\\sqrt(2x) = \\ln(3)";
+
+        let scanner = super::Tokenizer::new(Cursor::new(source));
+        let result: Vec<Token> = scanner.map(|t| t.unwrap()).collect();
+
+        assert_eq!(
+            result,
+            [
+                Token::new(
+                    TokenType::FunctionName(String::from("sqrt")),
+                    String::from("\\sqrt"),
+                    1
+                ),
+                Token::new(TokenType::LeftParen, String::from("("), 6),
+                Token::new(TokenType::Number(2.0), String::from("2"), 7),
+                Token::new(
+                    TokenType::Identifier(String::from("x")),
+                    String::from("x"),
+                    8
+                ),
+                Token::new(TokenType::RightParen, String::from(")"), 9),
+                Token::new(TokenType::Equal, String::from("="), 11),
+                Token::new(
+                    TokenType::FunctionName(String::from("ln")),
+                    String::from("\\ln"),
+                    13
+                ),
+                Token::new(TokenType::LeftParen, String::from("("), 16),
+                Token::new(TokenType::Number(3.0), String::from("3"), 17),
+                Token::new(TokenType::RightParen, String::from(")"), 18),
             ]
         )
     }
