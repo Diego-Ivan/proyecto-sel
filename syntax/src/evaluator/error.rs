@@ -1,4 +1,4 @@
-use crate::tokenizer::{Token, TokenType};
+use crate::tokenizer::Token;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -15,6 +15,8 @@ pub enum EvaluatorErrorType {
     InvalidBinaryOperator,
     NonConstantExponent,
     NonConstantBase,
+    ForbiddenParam,
+    UndefinedFunction,
 }
 
 pub type EvaluatorResult<T> = Result<T, EvaluatorError>;
@@ -58,6 +60,16 @@ impl Display for EvaluatorError {
                 f,
                 "The exponent of an exponentiation operation may only be a constant. Found {:?} in column {}",
                 self.token, self.token.column
+            ),
+            ForbiddenParam => write!(
+                f,
+                "Evaluating a function to a non-constant is disallowed. Found {:?} in column {}",
+                self.token, self.token.column
+            ),
+            UndefinedFunction => write!(
+                f,
+                "Function {} is undefined. Found in column {}",
+                self.token.lexeme, self.token.column
             ),
         }
     }

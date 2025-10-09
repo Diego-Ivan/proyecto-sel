@@ -130,6 +130,23 @@ impl Lexer {
             });
         }
 
+        if match_token!(self, TokenType::FunctionName(_)) {
+            let previous = self.previous().unwrap().clone();
+            let name = &previous.lexeme[1..];
+
+            expect_token!(self, TokenType::LeftParen, LeftParen);
+            let parameter = self.expression()?;
+            expect_token!(self, TokenType::RightParen, RightParen);
+
+            return Ok(Expression {
+                expression_type: ExpressionType::FunctionCall {
+                    name: String::from(name),
+                    parameter: Box::new(parameter),
+                },
+                token: previous,
+            });
+        }
+
         let mut primary = self.primary()?;
 
         let next = match self.peek() {
@@ -150,6 +167,17 @@ impl Lexer {
                 }
             }
             TokenType::LeftParen => {
+                let right = self.monomial()?;
+                primary = Expression {
+                    expression_type: ExpressionType::Binary {
+                        left: Box::new(primary),
+                        operator: Token::new(TokenType::Star, String::from("*"), next.column),
+                        right: Box::new(right),
+                    },
+                    token: next.clone(),
+                }
+            }
+            TokenType::FunctionName(_) => {
                 let right = self.monomial()?;
                 primary = Expression {
                     expression_type: ExpressionType::Binary {
@@ -484,5 +512,33 @@ mod tests {
 
         let mut lexer = Lexer::new(tokens);
         lexer.equation().unwrap();
+    }
+
+    #[test]
+    fn test_simple_function_call() {
+        let tokens = text_into_tokens("\\sqrt(2) = \\sin(10)");
+
+        let mut lexer = Lexer::new(tokens);
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(call sqrt 2)");
+        assert_eq!(right, "(call sin 10)")
+    }
+
+    #[test]
+    fn test_function_call_with_monomial() {
+        let tokens = text_into_tokens("\\cos(1 + 2x) = \\tan(3x + 10y + 2)");
+
+        let mut lexer = Lexer::new(tokens);
+        let equation = lexer.equation().unwrap();
+
+        let left = format!("{}", equation.left);
+        let right = format!("{}", equation.right);
+
+        assert_eq!(left, "(call cos (+ 1 (* 2 x)))");
+        assert_eq!(right, "(call tan (+ (+ (* 3 x) (* 10 y)) 2))")
     }
 }

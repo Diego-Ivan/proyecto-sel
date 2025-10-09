@@ -6,10 +6,38 @@ use crate::evaluator::error::{EvaluatorErrorType, EvaluatorResult};
 pub use crate::evaluator::value::Value;
 use crate::expression::{Expression, ExpressionType};
 use crate::tokenizer::{Token, TokenType};
+use std::collections::HashMap;
 
-pub struct Evaluator();
+type Function = fn(f64) -> f64;
+
+pub struct Evaluator {
+    functions: HashMap<String, Function>,
+}
+
+macro_rules! float_function {
+    ($name: expr, $func: ident) => {
+        (String::from($name), f64::$func as Function)
+    };
+}
 
 impl Evaluator {
+    pub fn new() -> Self {
+        let functions = HashMap::from([
+            float_function!("ln", ln),
+            float_function!("log", log10),
+            float_function!("log2", log2),
+            float_function!("abs", abs),
+            float_function!("sin", sin),
+            float_function!("tan", tan),
+            float_function!("cos", cos),
+            float_function!("exp", exp),
+            float_function!("sqrt", sqrt),
+            float_function!("floor", floor),
+            float_function!("ceil", ceil),
+        ]);
+        Self { functions }
+    }
+
     pub fn evaluate_expression(&self, expression: &Expression) -> EvaluatorResult<Value> {
         match &expression.expression_type {
             ExpressionType::Number(num) => Ok(Value::new_constant(*num)),
@@ -36,6 +64,39 @@ impl Evaluator {
                     token: operator.clone(),
                 }),
             },
+
+            ExpressionType::FunctionCall { name, parameter } => {
+                self.evaluate_function_call(parameter, name)
+            }
+        }
+    }
+
+    fn evaluate_function_call(
+        &self,
+        expression: &Expression,
+        function_name: &str,
+    ) -> EvaluatorResult<Value> {
+        match self.evaluate_expression(expression)? {
+            Value::Monomial {
+                coefficient,
+                variable,
+            } => match variable {
+                Some(_) => Err(EvaluatorError {
+                    error_type: EvaluatorErrorType::ForbiddenParam,
+                    token: expression.token.clone(),
+                }),
+                None => match self.functions.get(function_name) {
+                    Some(function) => Ok(Value::new_constant(function(coefficient))),
+                    None => Err(EvaluatorError {
+                        error_type: EvaluatorErrorType::UndefinedFunction,
+                        token: expression.token.clone(),
+                    }),
+                },
+            },
+            Value::Sum(_) => Err(EvaluatorError {
+                error_type: EvaluatorErrorType::ForbiddenParam,
+                token: expression.token.clone(),
+            }),
         }
     }
 
@@ -560,7 +621,7 @@ mod tests {
     #[test]
     fn test_negation() {
         let equation = equation_from_text("-x = -3");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         assert_eq!(left, Value::new_monomial(-1.0, String::from("x")));
@@ -576,7 +637,7 @@ mod tests {
 
         let equation = lexer.equation().unwrap();
 
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left_result = evaluator.evaluate_expression(&equation.left).unwrap();
         let right_result = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -608,7 +669,7 @@ mod tests {
 
         let equation = lexer.equation().unwrap();
 
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left_result = evaluator.evaluate_expression(&equation.left).unwrap();
         let right_result = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -639,7 +700,7 @@ mod tests {
     #[test]
     fn test_substraction() {
         let equation = equation_from_text("5 + y -x = 2y - 10");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -665,7 +726,7 @@ mod tests {
     #[test]
     fn test_implicit_multiplication() {
         let equation = equation_from_text("3x = -6y");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -677,7 +738,7 @@ mod tests {
     #[test]
     fn test_explicit_multiplication() {
         let equation = equation_from_text("3*x = -6*y");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -686,7 +747,7 @@ mod tests {
         assert_eq!(right, Value::new_monomial(-6.0, String::from("y")));
 
         let equation = equation_from_text("3*x*2 = -6*3*2y");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -702,7 +763,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_multiplication() {
         let equation = equation_from_text("3*x*y = -6*y*z");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         evaluator.evaluate_expression(&equation.left).unwrap();
         evaluator.evaluate_expression(&equation.right).unwrap();
@@ -711,7 +772,7 @@ mod tests {
     #[test]
     fn test_single_times_group_multiplication() {
         let equation = equation_from_text("3*(x+1) = -6x*(3 + 2)");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -727,7 +788,7 @@ mod tests {
         assert_eq!(right, Value::new_monomial(-30.0, String::from("x")));
 
         let equation = equation_from_text("3*(x+1+y) = 3 + 2x - y");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -755,7 +816,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_group_multiplication_left() {
         let equation = equation_from_text("(3 + x)*(1 - y) = (x - 2)*(-y+3)");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         evaluator.evaluate_expression(&equation.left).unwrap();
     }
@@ -764,7 +825,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_group_multiplication_right() {
         let equation = equation_from_text("2 = (x - 2)*(-x+3)");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         evaluator.evaluate_expression(&equation.right).unwrap();
     }
@@ -772,7 +833,7 @@ mod tests {
     #[test]
     fn evaluate_number_division() {
         let equation = equation_from_text("1 / 2 = 6 / 3");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -781,7 +842,7 @@ mod tests {
         assert_eq!(right, Value::new_constant(2.0));
 
         let equation = equation_from_text("0.5 / 0.5 = 4 / 0.25");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -793,7 +854,7 @@ mod tests {
     #[test]
     fn test_simple_variable_to_constant_division() {
         let equation = equation_from_text("(1/4) * x = y/2");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -806,7 +867,7 @@ mod tests {
     #[should_panic]
     fn panics_on_division_with_variable_left() {
         let equation = equation_from_text("y/x = 2");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         evaluator.evaluate_expression(&equation.left).unwrap();
     }
@@ -815,7 +876,7 @@ mod tests {
     #[should_panic]
     fn panic_on_division_variable_right() {
         let equation = equation_from_text("1.2x = 6 / y");
-        let evaluator = super::Evaluator {};
+        let evaluator = super::Evaluator::new();
 
         evaluator.evaluate_expression(&equation.right).unwrap();
     }
@@ -823,7 +884,7 @@ mod tests {
     #[test]
     fn test_group_implicit_multiplication() {
         let equation = equation_from_text("x(1 + 18) = (3 + 6)(2 + 9x)");
-        let evaluator = super::Evaluator();
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -841,7 +902,7 @@ mod tests {
     #[test]
     fn test_exponentiation() {
         let equation = equation_from_text("9^2 = 9^(1/2)");
-        let evaluator = super::Evaluator();
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -853,7 +914,7 @@ mod tests {
     #[test]
     fn test_allows_exponent_to_sum_of_constants() {
         let equation = equation_from_text("2^(1 + 3 + 1) = 3^(2 + 1)");
-        let evaluator = super::Evaluator();
+        let evaluator = super::Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left).unwrap();
         let right = evaluator.evaluate_expression(&equation.right).unwrap();
@@ -866,7 +927,55 @@ mod tests {
     #[should_panic]
     fn test_panics_on_variable_to_exponent() {
         let equation = equation_from_text("x^2 = y");
-        let evaluator = super::Evaluator();
+        let evaluator = super::Evaluator::new();
+
+        evaluator.evaluate_expression(&equation.left).unwrap();
+    }
+
+    #[test]
+    fn test_simple_function_call() {
+        let equation = equation_from_text("\\sin(0) = \\sqrt(4)");
+
+        let evaluator = super::Evaluator::new();
+
+        let left = evaluator.evaluate_expression(&equation.left).unwrap();
+        let right = evaluator.evaluate_expression(&equation.right).unwrap();
+
+        assert_eq!(left, Value::new_constant(0.0));
+        assert_eq!(right, Value::new_constant(2.0));
+    }
+
+    #[test]
+    fn test_function_with_sum_mult() {
+        let equation = equation_from_text("\\sin(9 + 2 * 2 - 13) = \\sqrt(9/2 + 1 - 5.5 + 4)");
+        let evaluator = super::Evaluator::new();
+
+        let left = evaluator.evaluate_expression(&equation.left).unwrap();
+        let right = evaluator.evaluate_expression(&equation.right).unwrap();
+
+        assert_eq!(left, Value::new_constant(0.0));
+        assert_eq!(right, Value::new_constant(2.0));
+    }
+
+    #[test]
+    fn test_multiplications_and_divisions_with_calls() {
+        let equation =
+            equation_from_text("2\\cos(9 + 2 * 2 - 13) * 4 = \\sqrt(9/2 + 1 - 5.5 + 4)/2");
+        let evaluator = super::Evaluator::new();
+
+        let left = evaluator.evaluate_expression(&equation.left).unwrap();
+        let right = evaluator.evaluate_expression(&equation.right).unwrap();
+
+        assert_eq!(left, Value::new_constant(8.0));
+        assert_eq!(right, Value::new_constant(1.0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panics_on_evaluation_with_variable() {
+        let equation =
+            equation_from_text("2\\cos(9 + 2 * 2 - x) * 4 = \\sqrt(9/2 + 1 - 5.5 + 4)/2");
+        let evaluator = super::Evaluator::new();
 
         evaluator.evaluate_expression(&equation.left).unwrap();
     }

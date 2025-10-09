@@ -32,7 +32,7 @@ impl Simplifier {
 
         let equation = lexer.equation()?;
 
-        let evaluator = Evaluator();
+        let evaluator = Evaluator::new();
 
         let left = evaluator.evaluate_expression(&equation.left)?;
         let right = evaluator.evaluate_expression(&equation.right)?;
